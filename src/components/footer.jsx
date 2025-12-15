@@ -1,5 +1,5 @@
 import React from 'react'
-
+// footer for the app
 const Footer = () => {
   return (
     <div>
