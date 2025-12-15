@@ -1,6 +1,8 @@
+// src/pages/article/articleDetail.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
+import Swal from "sweetalert2";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -15,7 +17,7 @@ export default function ArticleDetail() {
 
   const user = JSON.parse(localStorage.getItem("user"));
 
-  // Axios instance (same style as your other pages)
+  // Axios instance
   const api = useMemo(() => {
     const instance = axios.create({
       baseURL: `${backendUrl}/api`,
@@ -29,10 +31,9 @@ export default function ArticleDetail() {
     return instance;
   }, [backendUrl]);
 
-  // ---- Endpoints (match your routes) ----
-  // If your route is lowercase `/articles/:id`, change GET_BY_ID accordingly.
-  const GET_BY_ID = `/article/Articles/${id}`; // GET one
-  const DELETE_BY_ID = `/article/articles/${id}`; // DELETE (soft delete)
+  // Endpoints
+  const GET_BY_ID = `/article/Articles/${id}`;
+  const DELETE_BY_ID = `/article/articles/${id}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -41,8 +42,8 @@ export default function ArticleDetail() {
       try {
         setLoading(true);
         const { data } = await api.get(GET_BY_ID);
-        // Your response handler wraps payload in an array
         const payload = Array.isArray(data?.data) ? data.data[0] : data?.data;
+
         if (!payload) {
           toast.error("Article not found");
           navigate("/articles");
@@ -64,27 +65,78 @@ export default function ArticleDetail() {
     };
   }, [api, GET_BY_ID, navigate]);
 
-  // ---- Permissions ----
+  // Permissions
   const isAdmin = user?.role === "admin";
   const userId = user?._id || user?.id;
   const articleAuthorId = article?.authorId?._id || article?.authorId;
   const isAuthor =
     userId && articleAuthorId && String(userId) === String(articleAuthorId);
 
-  const canDelete = isAdmin || isAuthor; // admin OR author
-  const canEdit = isAuthor; // only author
+  const canDelete = isAdmin || isAuthor;
+  const canEdit = isAuthor;
 
-  // ---- Delete ----
-  const handleDelete = async () => {
+  // SweetAlert2 themed confirm (same style as cards)
+  const confirmAndDelete = async () => {
     if (!canDelete) return;
-    if (!window.confirm("Delete this article?")) return;
+
+    const result = await Swal.fire({
+      title: "Delete this article?",
+      text: "This action cannot be undone.",
+      background: "#0f172a",            // dark navy
+      color: "#e5e7eb",                 // gray-200
+      width: "25rem",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete it",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#dc2626",    // red-600
+      cancelButtonColor: "#374151",     // gray-700
+      focusCancel: true,
+      customClass: {
+        popup: "rounded-xl shadow-lg border border-gray-700",
+        title: "text-lg font-semibold text-gray-100",
+        htmlContainer: "text-sm text-gray-300",
+        confirmButton: "px-4 py-2 rounded-md text-sm font-medium",
+        cancelButton: "px-4 py-2 rounded-md text-sm font-medium",
+      },
+    });
+
+    if (!result.isConfirmed) return;
+
     try {
       await api.delete(DELETE_BY_ID);
-      toast.success("Article deleted");
-      setTimeout(() => navigate("/articles"), 500);
+
+      await Swal.fire({
+        title: "Deleted",
+        text: "The article has been removed.",
+        timer: 1300,
+        showConfirmButton: false,
+        background: "#0f172a",
+        color: "#e5e7eb",
+        width: "22rem",
+        customClass: {
+          popup: "rounded-xl shadow-lg border border-gray-700",
+          title: "text-base font-medium text-gray-100",
+          htmlContainer: "text-sm text-gray-300",
+        },
+      });
+
+      navigate("/articles");
     } catch (err) {
       console.error(err);
-      toast.error("Failed to delete");
+      await Swal.fire({
+        title: "Failed",
+        text: "Could not delete the article. Please try again.",
+        background: "#0f172a",
+        color: "#e5e7eb",
+        width: "22rem",
+        confirmButtonColor: "#374151",
+        customClass: {
+          popup: "rounded-xl shadow-lg border border-gray-700",
+          title: "text-base font-medium text-gray-100",
+          htmlContainer: "text-sm text-gray-300",
+          confirmButton: "px-4 py-2 rounded-md text-sm font-medium",
+        },
+      });
     }
   };
 
@@ -133,7 +185,7 @@ export default function ArticleDetail() {
             )}
             {canDelete && (
               <button
-                onClick={handleDelete}
+                onClick={confirmAndDelete}
                 className="px-3 py-1.5 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
               >
                 Delete
@@ -148,6 +200,7 @@ export default function ArticleDetail() {
           </div>
         </div>
 
+        {/* Cover image */}
         {article.imageUrl && (
           <img
             src={
@@ -157,7 +210,7 @@ export default function ArticleDetail() {
             }
             alt={article.title}
             className="rounded-lg w-full max-h-[420px] object-cover mb-6 border border-gray-200 dark:border-gray-700"
-            onError={(e) => (e.currentTarget.style.display = "none")} // hide if image fails
+            onError={(e) => (e.currentTarget.style.display = "none")}
           />
         )}
 

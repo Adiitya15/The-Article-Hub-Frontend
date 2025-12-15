@@ -5,12 +5,15 @@ import NotFound from "./pages/Page Not Found/NotFound"
 import Login from "./pages/login/Login"
 import ForgotPassword from "./pages/forgot-password/forgotPassword"
 import ResetPassword from "./pages/reset-password/resetPassword"
+
 import ProtectedRoute from "./components/protectedRoute"
 import Articles from "./pages/article/Article"
 import Drafts from "./pages/article/draft"
 import ArticleDetail from "./pages/article/articleDetail"
 import EditArticle from "./pages/article/updateArticle"
 import CreateArticle from "./pages/article/createArticle"
+import ArticlesLayout  from "./components/articlesLayout"
+
 function App() {
   return (
       <Routes>
@@ -22,11 +25,20 @@ function App() {
         <Route path="*" element={<NotFound />} />
         <Route path="" element={<Signup/>} />
 
-        <Route path="/articles" element={<ProtectedRoute> <Articles /> </ProtectedRoute>}/>
-        <Route path="/drafts" element={<ProtectedRoute> <Drafts /> </ProtectedRoute>}/>
-        <Route path="/articles/:id/edit" element={<ProtectedRoute> <EditArticle /> </ProtectedRoute>}/>
-        <Route path="/articles/:id" element={<ProtectedRoute> <ArticleDetail /> </ProtectedRoute>}/>
-        <Route path="/articles/new" element={<ProtectedRoute> <CreateArticle /> </ProtectedRoute>}/>
+        <Route 
+          element={
+            <ProtectedRoute>
+              <ArticlesLayout />
+            </ProtectedRoute>
+          }
+        >
+
+          <Route path="articles" element={<Articles status="published"/>}/>
+          <Route path="drafts" element={ <Articles status="draft" /> }/>
+          <Route path="articles/:id/edit" element={<EditArticle /> }/>
+          <Route path="articles/:id" element={ <ArticleDetail /> }/>
+          <Route path="articles/new" element={ <CreateArticle /> }/>
+        </Route>
       </Routes> 
   )
 }

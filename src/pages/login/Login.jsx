@@ -13,7 +13,11 @@ const schema = yup.object().shape({
   email: yup
     .string()
     .required("Email is required")
-    .email("Invalid email format"),
+    .email("Invalid email format")
+    .matches(
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+      "Invalid email format"
+    ),
   password: yup
     .string()
     .required("Password is required")

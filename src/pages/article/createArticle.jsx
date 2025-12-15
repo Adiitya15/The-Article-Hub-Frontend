@@ -1,17 +1,47 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { useForm } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
+import * as yup from "yup";
+
+const MAX_FILE_MB = 2;
+const ACCEPTED_FILE_TYPES = ["image/jpeg", "image/png", "application/pdf"];
+
+const schema = yup.object({
+  title: yup
+    .string()
+    .trim()
+    .required("Title is required")
+    .min(3, "Title must be at least 3 characters"),
+  content: yup
+    .string()
+    .transform((v) => (typeof v === "string" ? v.trim() : v))
+    .required("Content is required")
+    .min(10, "Content must be at least 10 characters"),
+  imageFile: yup
+    .mixed()
+    .test("fileType", "Only JPG, PNG, or PDF allowed", (file) => {
+      if (!file || file.length === 0) return true;
+      return ACCEPTED_FILE_TYPES.includes(file[0]?.type);
+    })
+    .test("fileSize", `File must be ≤ ${MAX_FILE_MB}MB`, (file) => {
+      if (!file || file.length === 0) return true;
+      return (file[0]?.size || 0) <= MAX_FILE_MB * 1024 * 1024;
+    }),
+});
+
+const isImageMime = (m) =>
+  m && (m.startsWith("image/jpeg") || m.startsWith("image/png"));
 
 export default function CreateArticle() {
   const navigate = useNavigate();
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+  const backendUrl =
+    import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   const api = useMemo(() => {
@@ -26,160 +56,201 @@ export default function CreateArticle() {
 
   const CREATE_PATH = "/article/createArticle";
 
-  // image preview
-  const onFileChange = (e) => {
-    const file = e.target.files?.[0] || null;
-    setImageFile(file);
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setImagePreview((prev) => {
-        if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+  const {
+    register,
+    handleSubmit,
+    watch,
+    reset,
+    formState: { errors },
+  } = useForm({
+    resolver: yupResolver(schema),
+    defaultValues: { title: "", content: "", imageFile: undefined },
+  });
+
+  // Live preview for image files only
+  const watchFile = watch("imageFile");
+  useEffect(() => {
+    if (watchFile && watchFile.length > 0 && isImageMime(watchFile[0]?.type)) {
+      const url = URL.createObjectURL(watchFile[0]);
+      setPreviewUrl((prev) => {
+        if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
         return url;
       });
+      return () => URL.revokeObjectURL(url);
     } else {
-      setImagePreview(null);
+      if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
     }
-  };
+  }, [watchFile]);
 
-  // Reusable function for both save/publish
-  const submit = async (status) => {
-    if (!title.trim()) return toast.error("Title is required");
-    if (!content.trim()) return toast.error("Content is required");
-
+  const submitWithStatus = async (form, status) => {
     try {
       setSubmitting(true);
       const fd = new FormData();
-      fd.append("title", title.trim());
-      fd.append("content", content.trim());
-      fd.append("status", status); // backend will accept 'draft' or 'published'
-      if (imageFile) fd.append("imageFile", imageFile);
+      fd.append("title", form.title.trim());
+      fd.append("content", form.content.trim());
+      // no dropdown; we decide based on which button was clicked:
+      fd.append("status", status); // "draft" | "published"
+      if (form.imageFile && form.imageFile.length > 0) {
+        fd.append("imageFile", form.imageFile[0]); // field name used by multer
+      }
 
       await api.post(CREATE_PATH, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
       if (status === "draft") {
-        toast.success("Draft saved successfully!");
-        setTimeout(() => navigate("/drafts"), 600);
+        toast.success("Draft saved");
+        setTimeout(() => navigate("/drafts"), 500);
       } else {
-        toast.success("Article published!");
-        setTimeout(() => navigate("/articles"), 600);
+        toast.success("Article published");
+        setTimeout(() => navigate("/articles"), 500);
       }
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to save article");
+      reset();
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to create article");
     } finally {
       setSubmitting(false);
     }
   };
 
+  const onSaveDraft = (data) => submitWithStatus(data, "draft");
+  const onPublish = (data) => submitWithStatus(data, "published");
+
   return (
     <section className="bg-gray-50 dark:bg-gray-900 min-h-screen">
       <ToastContainer position="top-right" autoClose={2000} />
       <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+        <div className="grid grid-cols-3 items-center mb-6">
+          <div className="justify-self-start">
+            <button
+              onClick={() => navigate(-1)}
+              className="px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              ←
+            </button>
+          </div>
+          <h1 className="justify-self-center text-2xl font-bold text-gray-900 dark:text-white">
             Create Article
           </h1>
-          <Link
-            to="/articles"
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            Back to Articles
-          </Link>
         </div>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit("draft"); // default save as draft
-          }}
-          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 space-y-5"
-        >
+        <form className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 space-y-5">
           {/* Title */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Title
+              Title <span className="text-red-500">*</span>
             </label>
             <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg 
-                         focus:ring-blue-500 focus:border-blue-500 px-3 py-2 
-                         dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              {...register("title")}
+              className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               placeholder="Enter title"
-              required
             />
+            {errors.title && (
+              <p className="mt-1 text-xs text-red-500">
+                {errors.title.message}
+              </p>
+            )}
           </div>
 
           {/* Content */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Content
+              Content <span className="text-red-500">*</span>
             </label>
             <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
               rows={8}
-              className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg 
-                         focus:ring-blue-500 focus:border-blue-500 px-3 py-2 
-                         dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              {...register("content")}
+              className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               placeholder="Write your article content here…"
-              required
             />
+            {errors.content && (
+              <p className="mt-1 text-xs text-red-500">
+                {errors.content.message}
+              </p>
+            )}
           </div>
 
-          {/* Cover Image */}
+          {/* Cover Image or Document */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Cover Image (optional)
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Cover Image or Document{" "}
+              <span className="text-gray-400">(optional)</span>
             </label>
+
+            {/* Hidden file input */}
             <input
               type="file"
-              accept="image/*"
-              onChange={onFileChange}
-              className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg 
-                         cursor-pointer bg-gray-50 dark:text-gray-300 
-                         dark:bg-gray-700 dark:border-gray-600"
+              id="fileUpload"
+              accept=".jpg,.jpeg,.png,.pdf"
+              {...register("imageFile")}
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  toast.info(`Selected: ${file.name}`);
+                }
+              }}
             />
-            {imagePreview && (
+
+            {/* Custom upload button */}
+            <button
+              type="button"
+              onClick={() => document.getElementById("fileUpload").click()}
+              className="px-1.5 py-1 text-xs rounded border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              Upload File
+            </button>
+
+            {/* File name or preview */}
+            {watchFile?.length > 0 && (
+              <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                Selected: {watchFile[0]?.name}
+              </p>
+            )}
+
+            {errors.imageFile && (
+              <p className="mt-1 text-xs text-red-500">
+                {errors.imageFile.message}
+              </p>
+            )}
+
+            {previewUrl && (
               <img
-                src={imagePreview}
+                src={previewUrl}
                 alt="Preview"
                 className="mt-3 rounded-md max-h-56 object-cover border dark:border-gray-600"
               />
             )}
           </div>
 
-          {/* Buttons */}
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 
-                         disabled:opacity-50"
-            >
-              {submitting ? "Saving…" : "Save Draft"}
-            </button>
-
+          {/* Actions */}
+          <div className="flex justify-between items-center gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={handleSubmit(onSaveDraft)}
+                className="px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50"
+              >
+                {submitting ? "Saving…" : "Save Draft"}
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
             <button
               type="button"
               disabled={submitting}
-              onClick={() => submit("published")}
-              className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 
-                         disabled:opacity-50"
+              onClick={handleSubmit(onPublish)}
+              className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
             >
               {submitting ? "Publishing…" : "Publish"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="px-4 py-2 rounded-lg border border-gray-300 
-                         dark:border-gray-700 text-gray-700 dark:text-gray-200 
-                         hover:bg-gray-100 dark:hover:bg-gray-700"
-            >
-              Cancel
             </button>
           </div>
         </form>
