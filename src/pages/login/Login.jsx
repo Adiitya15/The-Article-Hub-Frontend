@@ -60,7 +60,7 @@ const Login = () => {
         const decode = jwtDecode(token);
 
         const redirectPath =
-          decode?.role === "admin" ? "/admin/articles" : "/articles";
+          decode?.role === "admin" ? "/articles" : "/articles";
 
         setTimeout(() => {
           navigate(redirectPath);

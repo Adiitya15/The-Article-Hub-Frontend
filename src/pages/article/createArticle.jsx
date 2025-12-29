@@ -6,9 +6,11 @@ import "react-toastify/dist/ReactToastify.css";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
+import BackButton from "../../components/backButton";
 
-const MAX_FILE_MB = 2;
-const ACCEPTED_FILE_TYPES = ["image/jpeg", "image/png", "application/pdf"];
+const MAX_FILE_MB = 10;
+const ACCEPTED_FILE_TYPES = ["image/jpeg", "image/png"];
+const DEFAULT_IMAGE = "http://localhost:5000/uploads/no-image.png";
 
 const schema = yup.object({
   title: yup
@@ -23,7 +25,7 @@ const schema = yup.object({
     .min(10, "Content must be at least 10 characters"),
   imageFile: yup
     .mixed()
-    .test("fileType", "Only JPG, PNG, or PDF allowed", (file) => {
+    .test("fileType", "Only JPG, PNG", (file) => {
       if (!file || file.length === 0) return true;
       return ACCEPTED_FILE_TYPES.includes(file[0]?.type);
     })
@@ -91,7 +93,7 @@ export default function CreateArticle() {
       fd.append("content", form.content.trim());
       // no dropdown; we decide based on which button was clicked:
       fd.append("status", status); // "draft" | "published"
-      if (form.imageFile && form.imageFile.length > 0) {
+      if (form.imageFile) {
         fd.append("imageFile", form.imageFile[0]); // field name used by multer
       }
 
@@ -121,20 +123,12 @@ export default function CreateArticle() {
   return (
     <section className="bg-gray-50 dark:bg-gray-900 min-h-screen">
       <ToastContainer position="top-right" autoClose={2000} />
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-3 items-center mb-6">
-          <div className="justify-self-start">
-            <button
-              onClick={() => navigate(-1)}
-              className="px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-            >
-              ←
-            </button>
-          </div>
-          <h1 className="justify-self-center text-2xl font-bold text-gray-900 dark:text-white">
-            Create Article
-          </h1>
-        </div>
+      <div className="flex items-center gap-3 mb-6">
+  <BackButton />
+  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+    Create Article
+  </h1>
+      </div>
 
         <form className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 space-y-5">
           {/* Title */}
@@ -183,15 +177,16 @@ export default function CreateArticle() {
             <input
               type="file"
               id="fileUpload"
-              accept=".jpg,.jpeg,.png,.pdf"
-              {...register("imageFile")}
+              accept=".jpg,.jpeg,.png"
               className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  toast.info(`Selected: ${file.name}`);
-                }
-              }}
+              {...register("imageFile", {
+                onChange: (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    toast.info(`Selected: ${file.name}`);
+                  }
+                },
+              })}
             />
 
             {/* Custom upload button */}
@@ -202,26 +197,36 @@ export default function CreateArticle() {
             >
               Upload File
             </button>
-
-            {/* File name or preview */}
-            {watchFile?.length > 0 && (
-              <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                Selected: {watchFile[0]?.name}
-              </p>
-            )}
-
-            {errors.imageFile && (
-              <p className="mt-1 text-xs text-red-500">
-                {errors.imageFile.message}
-              </p>
-            )}
-
             {previewUrl && (
-              <img
-                src={previewUrl}
-                alt="Preview"
-                className="mt-3 rounded-md max-h-56 object-cover border dark:border-gray-600"
-              />
+              <div className="mt-3 space-y-2">
+                {/* Image preview */}
+                <img
+                  src={previewUrl}
+                  alt="Preview"
+                  className="w-20 h-20 rounded object-cover border dark:border-gray-600"
+                />
+
+                {/* File name + Remove button */}
+                {watchFile?.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      Selected: {watchFile[0]?.name}
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewUrl(null);
+                        reset({ ...watch(), imageFile: undefined });
+                        document.getElementById("fileUpload").value = "";
+                      }}
+                      className="text-xs text-red-600 hover:text-red-700 font-medium"
+                    >
+                      ✕ Remove
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -254,7 +259,6 @@ export default function CreateArticle() {
             </button>
           </div>
         </form>
-      </div>
     </section>
   );
 }
