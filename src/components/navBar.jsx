@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 
-export default function Navbar() {
+export default function Navbar({ showMenu = false, onMenuClick }) {
   const [open, setOpen] = useState(false);
   const user = JSON.parse(localStorage.getItem("user"));
   const dropdownRef = useRef(null);
@@ -20,14 +20,27 @@ export default function Navbar() {
 
   return (
     <nav className="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
-        {/* Left - App Name / Logo */}
-        <button
-          onClick={() => navigate("/articles")}
-          className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-800 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition"
-        >
-          The Articles Hub
-        </button>
+      <div className="w-full px-4 h-16 flex justify-between items-center">
+       {/* Left - Admin menu + App Name */}
+<div className="flex items-center gap-3">
+  {showMenu && (
+   <button
+    onClick={onMenuClick}
+    className="md:hidden text-2xl text-gray-700 dark:text-gray-200 hover:text-blue-600"
+    aria-label="Open admin sidebar"
+  >
+    ☰
+  </button>
+  )}
+
+  <button
+    onClick={() => navigate("/articles")}
+    className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-800 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition"
+  >
+    The Articles Hub
+  </button>
+</div>
+
 
         {/* Right - User Name + Profile Icon */}
         <div className="relative flex items-center gap-3" ref={dropdownRef}>

@@ -55,6 +55,7 @@ const Articles = ({ status }) => {
         params: { page, limit, search: debouncedSearch, status },
         signal,
       });
+      console.log("array shape<<<",data)
       setArticles(data?.data?.[0]?.items ?? []);
       setTotal(data?.data?.[0]?.total ?? 0);
     } catch (err) {
@@ -98,22 +99,31 @@ const Articles = ({ status }) => {
     return String(authorId) === String(user._id || user.id);
   };
 
-  const handlePublish = async (id) => {
-    try {
-      setPublishingId(id);
-      await api.patch(`/article/articles/${id}`, { status: "published" });
-      toast.success("Draft published");
-      if (controllerRef.current) controllerRef.current.abort();
-      const controller = new AbortController();
-      controllerRef.current = controller;
-      fetchArticles(controller.signal);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to publish draft");
-    } finally {
-      setPublishingId(null);
+ const handlePublish = async (id) => {
+  try {
+    setPublishingId(id);
+
+    // 1️ Update status in backend
+    await api.put(`/article/articles/${id}`, { status: "published" });
+
+    toast.success("Draft published");
+
+    // 2️ REMOVE the draft locally from Draft page
+    setArticles((prev) => prev.filter((a) => a._id !== id));
+    setTotal((prev) => Math.max(0, prev - 1));
+
+    // 3️ Handle pagination edge case
+    if (articles.length === 1 && page > 1) {
+      setPage((p) => p - 1);
     }
-  };
+  } catch (err) {
+    console.error(err);
+    toast.error("Failed to publish draft");
+  } finally {
+    setPublishingId(null);
+  }
+};
+
 
   const title = status === "draft" ? "Drafts" : "Articles";
 
@@ -189,38 +199,62 @@ const Articles = ({ status }) => {
         )}
 
         {/* Pagination */}
-        {!loading && total > 0 && (
+        {!loading && total > 0 && totalPages >= 1 && (
           <>
             <div className="flex items-center gap-2 mt-6">
+              {/* Prev */}
               <button
                 disabled={page === 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-3 py-1 border rounded-lg disabled:opacity-50 bg-white dark:bg-gray-800 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-500 transition-all duration-200 shadow-sm focus:outline-none focus:ring-0"
+                className={`px-3 py-1 border rounded-lg shadow-sm transition
+          ${page === 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-500"}
+          bg-white dark:bg-gray-800 dark:border-gray-700
+          text-gray-700 dark:text-gray-200`}
               >
                 Prev
               </button>
 
-              {Array.from({ length: totalPages }).map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => setPage(index + 1)}
-                  className={`px-3 py-1 rounded-md text-sm transition ${
-                    page === index + 1 ? "text-white bg-gray-700" : "hover:bg-gray-600"
-                  }`}
-                >
-                  {index + 1}
-                </button>
-              ))}
+              {/* Page Numbers */}
+              {Array.from({ length: totalPages }).map((_, index) => {
+                const pageNum = index + 1;
+                const isActive = page === pageNum;
 
+                return (
+                  <button
+                    key={pageNum}
+                    disabled={isActive}
+                    onClick={() => setPage(pageNum)}
+                    className={`px-3 py-1 rounded-md text-sm transition
+              ${
+                isActive
+                  ? "bg-gray-700 text-white cursor-default"
+                  : "hover:bg-gray-600 text-gray-200"
+              }
+              disabled:opacity-70 disabled:cursor-not-allowed`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              {/* Next */}
               <button
                 disabled={page === totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-3 py-1 border rounded-lg disabled:opacity-50 bg-white dark:bg-gray-800 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-500 transition-all duration-200 shadow-sm"
+                className={`px-3 py-1 border rounded-lg shadow-sm transition
+          ${
+            page === totalPages
+              ? "opacity-50 cursor-not-allowed"
+              : "hover:bg-gray-500"
+          }
+          bg-white dark:bg-gray-800 dark:border-gray-700
+          text-gray-700 dark:text-gray-200`}
               >
                 Next
               </button>
             </div>
 
+            {/* Items per page */}
             <div className="flex items-center gap-2 mb-4 mt-6">
               <label className="text-sm text-gray-300">Items per page:</label>
               <select

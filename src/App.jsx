@@ -8,11 +8,14 @@ import ResetPassword from "./pages/reset-password/resetPassword"
 
 import ProtectedRoute from "./components/protectedRoute"
 import Articles from "./pages/article/Article"
-import Drafts from "./pages/article/draft"
+//import Drafts from "./pages/article/draft"
 import ArticleDetail from "./pages/article/articleDetail"
 import EditArticle from "./pages/article/updateArticle"
 import CreateArticle from "./pages/article/createArticle"
 import ArticlesLayout  from "./components/articlesLayout"
+import Users from "./pages/Users/userLists"
+import CreateUser from "./pages/Users/create"
+import Profile from "./pages/profile"
 
 function App() {
   return (
@@ -38,6 +41,9 @@ function App() {
           <Route path="articles/:id/edit" element={<EditArticle /> }/>
           <Route path="articles/:id" element={ <ArticleDetail /> }/>
           <Route path="articles/new" element={ <CreateArticle /> }/>
+          <Route path="users" element={<Users />} />
+          <Route path="users/create" element={<CreateUser />} />
+          <Route path="profile" element={<Profile />} />
         </Route>
       </Routes> 
   )
