@@ -2,6 +2,8 @@ import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+import { SlArrowLeftCircle } from "react-icons/sl";
+import axiosInstance from "../../utils/axios.interceptor";
 
 export default function CreateUser() {
   const [form, setForm] = useState({
@@ -11,9 +13,7 @@ export default function CreateUser() {
     role: "user",
   });
 
-  const navigate = useNavigate();
-  const backendUrl =
-    import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+  const navigate = useNavigate()
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -23,16 +23,10 @@ export default function CreateUser() {
     e.preventDefault();
 
     try {
-      const token = localStorage.getItem("token");
 
-      await axios.post(
-        `${backendUrl}/api/user/create`,
-        form,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+      await axiosInstance.post(
+        `user/create`,
+        form
       );
 
       toast.success("User created successfully");
@@ -51,7 +45,8 @@ export default function CreateUser() {
         onClick={() => navigate("/users")}
         className="mb-4 text-sm text-gray-600 hover:underline"
       >
-        ← Back to Users
+        <SlArrowLeftCircle />
+
       </button>
       
     <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-4">

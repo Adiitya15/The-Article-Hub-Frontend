@@ -6,7 +6,7 @@ export default function Navbar({ showMenu = false, onMenuClick }) {
   const user = JSON.parse(localStorage.getItem("user"));
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
-
+  
   // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(e) {
@@ -78,7 +78,7 @@ export default function Navbar({ showMenu = false, onMenuClick }) {
                   <button
                     onClick={() => {
                       setOpen(false);
-                      navigate("/profile");
+                      navigate(`/user-profile`);
                     }}
                     className="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600"
                     role="menuitem"
