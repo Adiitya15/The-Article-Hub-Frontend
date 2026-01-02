@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { useForm } from "react-hook-form";
@@ -6,34 +6,50 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import BackButton from "../../components/backButton";
 
-/* ---------- helpers ---------- */
-const isImageMime = (mime = "") =>
-  mime.startsWith("image/") && (mime.includes("jpeg") || mime.includes("png"));
+const MAX_FILE_MB = 10;
+const ACCEPTED_FILE_TYPES = ["image/jpeg", "image/png"];
+const DEFAULT_IMAGE = "/article-default.png";
 
 const schema = yup.object({
-  title: yup.string().trim().required("Title is required"),
-  content: yup.string().trim().required("Content is required"),
+  title: yup
+    .string()
+    .trim()
+    .required("Title is required")
+    .min(3, "Title must be at least 3 characters"),
+  content: yup
+    .string()
+    .transform((v) => (typeof v === "string" ? v.trim() : v))
+    .required("Content is required")
+    .min(10, "Content must be at least 10 characters"),
   imageFile: yup
     .mixed()
-    .test("fileType", "Only JPG or PNG allowed", (value) => {
-      if (!value || value.length === 0) return true;
-      const f = value[0];
-      return f?.type && isImageMime(f.type);
+    .test("fileType", "Only JPG, PNG", (file) => {
+      if (!file || file.length === 0) return true;
+      return ACCEPTED_FILE_TYPES.includes(file[0]?.type);
+    })
+    .test("fileSize", `File must be ≤ ${MAX_FILE_MB}MB`, (file) => {
+      if (!file || file.length === 0) return true;
+      return (file[0]?.size || 0) <= MAX_FILE_MB * 1024 * 1024;
     }),
 });
+
+const isImageMime = (m) =>
+  m && (m.startsWith("image/jpeg") || m.startsWith("image/png"));
 
 export default function EditArticle() {
   const { id } = useParams();
   const navigate = useNavigate();
+
   const backendUrl =
     import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
-  /* ---------- preview ---------- */
-  const [previewUrl, setPreviewUrl] = useState(null);
   const [serverImageUrl, setServerImageUrl] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [removeServerImage, setRemoveServerImage] = useState(false);
 
-  /* ---------- axios ---------- */
   const api = useMemo(() => {
     const instance = axios.create({ baseURL: `${backendUrl}/api` });
     instance.interceptors.request.use((config) => {
@@ -44,10 +60,9 @@ export default function EditArticle() {
     return instance;
   }, [backendUrl]);
 
-  const GET_ARTICLE_PATH = `/article/Articles/${id}`;
+  const GET_ARTICLE_PATH = `/article/articles/${id}`;
   const UPDATE_ARTICLE_PATH = `/article/articles/${id}`;
 
-  /* ---------- RHF ---------- */
   const {
     register,
     handleSubmit,
@@ -63,10 +78,9 @@ export default function EditArticle() {
     },
   });
 
-  const fileInputRef = useRef(null);
   const watchFile = watch("imageFile");
 
-  /* ---------- load article ---------- */
+  // Load article
   useEffect(() => {
     (async () => {
       try {
@@ -82,12 +96,17 @@ export default function EditArticle() {
         setValue("title", payload.title || "");
         setValue("content", payload.content || "");
 
-        if (payload.imageUrl) {
-          setServerImageUrl(
-            payload.imageUrl.startsWith("http")
-              ? payload.imageUrl
-              : `${backendUrl}${payload.imageUrl}`
-          );
+        // Only set serverImageUrl if it's NOT the default image
+        if (payload.imageUrl && payload.imageUrl !== DEFAULT_IMAGE) {
+          const imageUrl = payload.imageUrl.startsWith("http")
+            ? payload.imageUrl
+            : `${backendUrl}${payload.imageUrl}`;
+          setServerImageUrl(imageUrl);
+          setFileName(payload.imageUrl.split("/").pop());
+        } else {
+          // If it's the default image or no image, don't set serverImageUrl
+          setServerImageUrl(null);
+          setFileName("");
         }
       } catch (err) {
         console.error(err);
@@ -95,178 +114,222 @@ export default function EditArticle() {
         navigate("/articles");
       }
     })();
-  }, [api, id, backendUrl, navigate, setValue]);
+  }, [api, backendUrl, id, navigate, setValue]);
 
-  /* ---------- watch file & preview ---------- */
+  // Preview selected file
   useEffect(() => {
-    const file = watchFile?.[0];
-
-    if (file && isImageMime(file.type)) {
+    if (watchFile && watchFile.length > 0 && isImageMime(watchFile[0]?.type)) {
+      const file = watchFile[0];
       const url = URL.createObjectURL(file);
       setPreviewUrl((prev) => {
         if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
         return url;
       });
-    } else {
-      setPreviewUrl((prev) => {
-        if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-        return null;
-      });
+      setFileName(file.name);
+      setServerImageUrl(null); // Hide server image when new file selected
+      setRemoveServerImage(false);
+      return () => URL.revokeObjectURL(url);
+    } else if (!watchFile || watchFile.length === 0) {
+      if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      if (!serverImageUrl) setFileName("");
     }
   }, [watchFile]);
 
-  /* ---------- submit ---------- */
+  const handleRemoveImage = () => {
+    if (previewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
+    setServerImageUrl(null);
+    setFileName("");
+    setRemoveServerImage(true);
+    setValue("imageFile", undefined);
+    // Reset the file input
+    const fileInput = document.getElementById("fileUpload");
+    if (fileInput) fileInput.value = "";
+  };
+
   const onSubmit = async (form) => {
     try {
       const fd = new FormData();
       fd.append("title", form.title.trim());
       fd.append("content", form.content.trim());
 
+      console.log("🆔 Updating article ID:", id);
+      console.log("🔍 Submit state:", {
+        removeServerImage,
+        hasImageFile: form.imageFile?.length > 0,
+        serverImageUrl,
+        previewUrl
+      });
+
+      // LOGIC:
+      // 1. If new image uploaded -> send the file
+      // 2. If image was removed and no new image -> tell backend to set default
+      // 3. If image exists and not changed -> don't send anything (backend keeps existing)
+
+      // If a new image is uploaded
       if (form.imageFile && form.imageFile.length > 0) {
+        console.log("✅ Uploading new image file");
         fd.append("imageFile", form.imageFile[0]);
       }
+      // If user removed the image and didn't upload a new one -> set default
+      else if (removeServerImage && (!form.imageFile || form.imageFile.length === 0)) {
+        console.log("✅ Image removed, setting default");
+        fd.append("imageAction", "set-default");
+      }
+      // Otherwise: keep existing image (don't send anything)
 
-      await api.put(UPDATE_ARTICLE_PATH, fd, {
+      // Log what we're sending
+      console.log("📤 FormData contents:");
+      for (let pair of fd.entries()) {
+        console.log(pair[0] + ': ' + pair[1]);
+      }
+
+      console.log("🌐 API endpoint:", UPDATE_ARTICLE_PATH);
+
+      const response = await api.put(UPDATE_ARTICLE_PATH, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+
+      console.log("📥 Backend response:", response.data);
 
       toast.success("Article updated");
       setTimeout(() => navigate("/articles"), 500);
     } catch (err) {
-      console.error(err);
+      console.error("❌ Submit error:", err);
       toast.error("Failed to update article");
     }
   };
+
+  const displayImage = previewUrl || serverImageUrl || DEFAULT_IMAGE;
+  const hasActualImage = previewUrl || serverImageUrl;
 
   return (
     <section className="bg-gray-50 dark:bg-gray-900 min-h-screen">
       <ToastContainer position="top-right" autoClose={2000} />
 
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => navigate(-1)}
-            className="px-2 py-1 text-xs rounded border"
-          >
-            ←
-          </button>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Edit Article
-          </h1>
+      <div className="flex items-center gap-3 mb-6">
+        <BackButton />
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          Edit Article
+        </h1>
+      </div>
+
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 space-y-5"
+      >
+        {/* Title */}
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Title <span className="text-red-500">*</span>
+          </label>
+          <input
+            {...register("title")}
+            className="w-full px-3 py-2 rounded-lg border"
+            placeholder="Enter title"
+          />
+          {errors.title && (
+            <p className="text-xs text-red-500 mt-1">
+              {errors.title.message}
+            </p>
+          )}
         </div>
 
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="bg-white dark:bg-gray-800 rounded-lg p-5 space-y-5"
-        >
-          {/* Title */}
-          <div>
-            <label className="text-sm font-medium">Title</label>
-            <input
-              {...register("title")}
-              className="w-full mt-1 border rounded px-3 py-2"
-            />
-            {errors.title && (
-              <p className="text-xs text-red-500">{errors.title.message}</p>
-            )}
-          </div>
+        {/* Content */}
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Content <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            rows={8}
+            {...register("content")}
+            className="w-full px-3 py-2 rounded-lg border"
+            placeholder="Write your article content here…"
+          />
+          {errors.content && (
+            <p className="text-xs text-red-500 mt-1">
+              {errors.content.message}
+            </p>
+          )}
+        </div>
 
-          {/* Content */}
-          <div>
-            <label className="text-sm font-medium">Content</label>
-            <textarea
-              {...register("content")}
-              rows={5}
-              className="w-full mt-1 border rounded px-3 py-2 resize-none"
-            />
-            {errors.content && (
-              <p className="text-xs text-red-500">{errors.content.message}</p>
-            )}
-          </div>
+        {/* File upload */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Article Image (Optional)
+          </label>
 
-          {/* Image */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium">
-              Replace cover image (optional)
-            </label>
+          <input
+            type="file"
+            id="fileUpload"
+            accept=".jpg,.jpeg,.png"
+            className="hidden"
+            {...register("imageFile")}
+          />
 
-            {!previewUrl && serverImageUrl && (
-              <img
-                src={serverImageUrl}
-                alt="Current"
-                className="w-32 h-32 object-cover rounded"
-              />
-            )}
-
-            {previewUrl && (
-              <img
-                src={previewUrl}
-                alt="Preview"
-                className="w-32 h-32 object-cover rounded"
-              />
-            )}
-
-            <input
-              type="file"
-              accept=".jpg,.jpeg,.png"
-              className="hidden"
-              {...register("imageFile")}
-              ref={(el) => {
-                register("imageFile").ref(el);
-                fileInputRef.current = el;
-              }}
-            />
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-2 py-1 text-xs border rounded"
-              >
-                Upload
-              </button>
-
-              {watchFile?.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPreviewUrl(null);
-                    setValue("imageFile", undefined, { shouldDirty: true });
-                    if (fileInputRef.current) {
-                      fileInputRef.current.value = "";
-                    }
-                  }}
-                  className="text-xs text-red-600 hover:text-red-700 font-medium"
-                >
-                  ✕ Remove
-                </button>
-              )}
-            </div>
-
-            {errors.imageFile && (
-              <p className="text-xs text-red-500">{errors.imageFile.message}</p>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-gray-700 text-white rounded"
-            >
-              {isSubmitting ? "Saving…" : "Save"}
-            </button>
+          {!hasActualImage && (
             <button
               type="button"
-              onClick={() => navigate(-1)}
-              className="px-4 py-2 border rounded"
+              onClick={() => document.getElementById("fileUpload").click()}
+              className="text-sm border border-gray-300 dark:border-gray-600 px-4 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition"
             >
-              Cancel
+              Upload Image
             </button>
-          </div>
-        </form>
-      </div>
+          )}
+
+          {errors.imageFile && (
+            <p className="text-xs text-red-500 mt-1">
+              {errors.imageFile.message}
+            </p>
+          )}
+
+          {/* Image preview and filename */}
+          {hasActualImage && (
+            <div className="mt-4 flex items-start gap-4">
+              <img
+                src={displayImage}
+                alt="Preview"
+                className="w-32 h-32 rounded object-cover border border-gray-200 dark:border-gray-600"
+              />
+
+              <div className="flex flex-col justify-end h-32">
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <span className="font-medium">Selected file:</span> {fileName}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="text-sm text-red-500 hover:text-red-600 font-medium transition text-left"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-between pt-4">
+          <button
+            type="button"
+            onClick={() => navigate("/articles")}
+            className="bg-gray-700 hover:bg-gray-800 text-white px-5 py-2 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
+      </form>
     </section>
   );
 }

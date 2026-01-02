@@ -1,6 +1,10 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Swal from "sweetalert2";
+ const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+
+const DEFAULT_ARTICLE_IMAGE = "/article-default.png";
+
 
 export default function ArticleCard({
   article,
@@ -15,12 +19,24 @@ export default function ArticleCard({
   const [expanded, setExpanded] = useState(false);
   const menuRef = useRef(null);
 
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
-  const imgSrc = useMemo(() => {
-    const url = article?.imageUrl || "";
-    if (!url) return null;
-    return url.startsWith("http") ? url : `${backendUrl}${url}`;
-  }, [article?.imageUrl, backendUrl]);
+ 
+ const imgSrc = useMemo(() => {
+  const url = article?.imageUrl;
+
+  if (
+    !url ||
+    typeof url !== "string" ||
+    url.trim() === "" ||
+    url === "no-image.png" ||          // 👈 ADD THIS
+    url === "/no-image.png"
+  ) {
+    return DEFAULT_ARTICLE_IMAGE;
+  }
+
+  return url.startsWith("http")
+    ? url
+    : `${backendUrl}${url}`;
+}, [article?.imageUrl]);
 
   // Close kebab on outside click
   useEffect(() => {
@@ -85,13 +101,16 @@ export default function ArticleCard({
   return (
     <li className="relative flex flex-col h-full border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition bg-white dark:bg-gray-800">
       {/* Image + kebab */}
-      {imgSrc && (
+      
         <div className="relative w-full aspect-[16/9] mb-3 overflow-hidden rounded-md">
           <img
-            src={imgSrc}
+            src={imgSrc||DEFAULT_ARTICLE_IMAGE}
             alt={article.title}
             className="w-full h-full object-cover"
-            onError={(e) => (e.currentTarget.style.display = "none")}
+             onError={(e) => {
+    e.currentTarget.onerror = null; // prevent loop
+    e.currentTarget.src = DEFAULT_ARTICLE_IMAGE;
+  }}
           />
 
           {canManage && (
@@ -130,44 +149,10 @@ export default function ArticleCard({
             </div>
           )}
         </div>
-      )}
+      
 
-      {/* Kebab when no image */}
-      {!imgSrc && canManage && (
-        <div className="ml-auto self-end -mt-1 mb-2 relative z-10" ref={menuRef}>
-          <button
-            onClick={() => setOpen((s) => !s)}
-            aria-label="Article actions"
-            className="w-7 h-7 rounded-full grid place-items-center hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" className="text-gray-600 dark:text-gray-300">
-              <circle cx="12" cy="5" r="2" />
-              <circle cx="12" cy="12" r="2" />
-              <circle cx="12" cy="19" r="2" />
-            </svg>
-          </button>
-
-          {open && (
-            <div className="absolute right-0 mt-2 w-40 rounded-lg bg-white dark:bg-gray-800 shadow-lg ring-1 ring-black/5 overflow-hidden z-30">
-              <button
-                className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-200"
-                onClick={() => {
-                  setOpen(false);
-                  navigate(`/articles/${article._id}/edit`);
-                }}
-              >
-                Edit
-              </button>
-              <button
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                onClick={confirmDelete}
-              >
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+     
+      
 
       {/* Body */}
       <div className="flex flex-col flex-grow">

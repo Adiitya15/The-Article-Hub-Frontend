@@ -1,12 +1,17 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import axios from "axios";
+import axiosInstance from "../../utils/axios.interceptor";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import BackButton from "../../components/backButton";
+import {
+  confirmDelete,
+  showSuccess,
+  showError,
+} from "../../utils/sweetAlert";
 
 const MAX_FILE_MB = 10;
 const ACCEPTED_FILE_TYPES = ["image/jpeg", "image/png"];
@@ -40,21 +45,10 @@ const isImageMime = (m) =>
 
 export default function CreateArticle() {
   const navigate = useNavigate();
-  const backendUrl =
-    import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
   const [previewUrl, setPreviewUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-
-  const api = useMemo(() => {
-    const instance = axios.create({ baseURL: `${backendUrl}/api` });
-    instance.interceptors.request.use((config) => {
-      const token = localStorage.getItem("token");
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-      return config;
-    });
-    return instance;
-  }, [backendUrl]);
+  const [fileName, setFileName] = useState("");
 
   const CREATE_PATH = "/article/createArticle";
 
@@ -63,41 +57,58 @@ export default function CreateArticle() {
     handleSubmit,
     watch,
     reset,
+    setValue,
     formState: { errors },
   } = useForm({
     resolver: yupResolver(schema),
     defaultValues: { title: "", content: "", imageFile: undefined },
   });
 
-  // Live preview for image files only
   const watchFile = watch("imageFile");
+
   useEffect(() => {
     if (watchFile && watchFile.length > 0 && isImageMime(watchFile[0]?.type)) {
-      const url = URL.createObjectURL(watchFile[0]);
+      const file = watchFile[0];
+      const url = URL.createObjectURL(file);
       setPreviewUrl((prev) => {
         if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
         return url;
       });
+      setFileName(file.name);
       return () => URL.revokeObjectURL(url);
     } else {
       if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
+      setFileName("");
     }
   }, [watchFile]);
+
+  const handleRemoveImage = () => {
+    if (previewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
+    setFileName("");
+    setValue("imageFile", undefined);
+    // Reset the file input
+    const fileInput = document.getElementById("fileUpload");
+    if (fileInput) fileInput.value = "";
+  };
 
   const submitWithStatus = async (form, status) => {
     try {
       setSubmitting(true);
       const fd = new FormData();
+
       fd.append("title", form.title.trim());
       fd.append("content", form.content.trim());
-      // no dropdown; we decide based on which button was clicked:
-      fd.append("status", status); // "draft" | "published"
-      if (form.imageFile) {
-        fd.append("imageFile", form.imageFile[0]); // field name used by multer
+      fd.append("status", status);
+
+      if (form.imageFile && form.imageFile.length > 0) {
+        fd.append("imageFile", form.imageFile[0]);
       }
 
-      await api.post(CREATE_PATH, fd, {
+      await axiosInstance.post(CREATE_PATH, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
@@ -108,7 +119,10 @@ export default function CreateArticle() {
         toast.success("Article published");
         setTimeout(() => navigate("/articles"), 500);
       }
+
       reset();
+      setPreviewUrl(null);
+      setFileName("");
     } catch (e) {
       console.error(e);
       toast.error("Failed to create article");
@@ -117,148 +131,189 @@ export default function CreateArticle() {
     }
   };
 
-  const onSaveDraft = (data) => submitWithStatus(data, "draft");
-  const onPublish = (data) => submitWithStatus(data, "published");
+  const onSaveDraft = async (data) => {
+    const result = await confirmDelete({
+      title: "Save this article as a draft?",
+      text: "You can continue editing it later.",
+      confirmText: "Yes, save draft",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      setSubmitting(true);
+      await submitWithStatus(data, "draft");
+
+      await showSuccess({
+        title: "Draft saved",
+        text: "Your article has been saved successfully.",
+      });
+
+      navigate("/drafts");
+    } catch (err) {
+      console.error(err);
+      await showError({
+        title: "Save failed",
+        text: "Unable to save draft. Please try again.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onPublish = async (data) => {
+    const result = await confirmDelete({
+      title: "Publish this article?",
+      text: "Once published, this article will be visible to everyone.",
+      confirmText: "Yes, publish it",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      setSubmitting(true);
+      await submitWithStatus(data, "published");
+
+      await showSuccess({
+        title: "Published!",
+        text: "Your article is now live.",
+      });
+
+      navigate("/articles");
+    } catch (err) {
+      console.error(err);
+      await showError({
+        title: "Publish failed",
+        text: "Could not publish the article. Please try again.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <section className="bg-gray-50 dark:bg-gray-900 min-h-screen">
       <ToastContainer position="top-right" autoClose={2000} />
+
       <div className="flex items-center gap-3 mb-6">
-  <BackButton />
-  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-    Create Article
-  </h1>
+        <BackButton />
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          Create Article
+        </h1>
       </div>
 
-        <form className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 space-y-5">
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Title <span className="text-red-500">*</span>
-            </label>
-            <input
-              {...register("title")}
-              className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              placeholder="Enter title"
-            />
-            {errors.title && (
-              <p className="mt-1 text-xs text-red-500">
-                {errors.title.message}
-              </p>
-            )}
-          </div>
+      <form className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 space-y-5">
+        {/* Title */}
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Title <span className="text-red-500">*</span>
+          </label>
+          <input
+            {...register("title")}
+            className="w-full px-3 py-2 rounded-lg border"
+            placeholder="Enter title"
+          />
+          {errors.title && (
+            <p className="text-xs text-red-500 mt-1">
+              {errors.title.message}
+            </p>
+          )}
+        </div>
 
-          {/* Content */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Content <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              rows={8}
-              {...register("content")}
-              className="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              placeholder="Write your article content here…"
-            />
-            {errors.content && (
-              <p className="mt-1 text-xs text-red-500">
-                {errors.content.message}
-              </p>
-            )}
-          </div>
+        {/* Content */}
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Content <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            rows={8}
+            {...register("content")}
+            className="w-full px-3 py-2 rounded-lg border"
+            placeholder="Write your article content here…"
+          />
+          {errors.content && (
+            <p className="text-xs text-red-500 mt-1">
+              {errors.content.message}
+            </p>
+          )}
+        </div>
 
-          {/* Cover Image or Document */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Cover Image or Document{" "}
-              <span className="text-gray-400">(optional)</span>
-            </label>
+        {/* File upload */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Article Image (Optional)
+          </label>
 
-            {/* Hidden file input */}
-            <input
-              type="file"
-              id="fileUpload"
-              accept=".jpg,.jpeg,.png"
-              className="hidden"
-              {...register("imageFile", {
-                onChange: (e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    toast.info(`Selected: ${file.name}`);
-                  }
-                },
-              })}
-            />
+          <input
+            type="file"
+            id="fileUpload"
+            accept=".jpg,.jpeg,.png"
+            className="hidden"
+            {...register("imageFile")}
+          />
 
-            {/* Custom upload button */}
+          {!previewUrl && (
             <button
               type="button"
               onClick={() => document.getElementById("fileUpload").click()}
-              className="px-1.5 py-1 text-xs rounded border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              className="text-sm border border-gray-300 dark:border-gray-600 px-4 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition"
             >
-              Upload File
+              Upload Image
             </button>
-            {previewUrl && (
-              <div className="mt-3 space-y-2">
-                {/* Image preview */}
-                <img
-                  src={previewUrl}
-                  alt="Preview"
-                  className="w-20 h-20 rounded object-cover border dark:border-gray-600"
-                />
+          )}
 
-                {/* File name + Remove button */}
-                {watchFile?.length > 0 && (
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      Selected: {watchFile[0]?.name}
-                    </p>
+          {errors.imageFile && (
+            <p className="text-xs text-red-500 mt-1">
+              {errors.imageFile.message}
+            </p>
+          )}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPreviewUrl(null);
-                        reset({ ...watch(), imageFile: undefined });
-                        document.getElementById("fileUpload").value = "";
-                      }}
-                      className="text-xs text-red-600 hover:text-red-700 font-medium"
-                    >
-                      ✕ Remove
-                    </button>
-                  </div>
-                )}
+          {/* Image preview and filename */}
+         {previewUrl && (
+            <div className="mt-4 flex items-start gap-4">
+              <img
+                src={previewUrl}
+                alt="Preview"
+                className="w-32 h-32 rounded object-cover border border-gray-200 dark:border-gray-600"
+              />
+
+              <div className="flex flex-col justify-end h-32">
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <span className="font-medium">Selected file:</span> {fileName}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="text-sm text-red-500 hover:text-red-600 font-medium transition text-left"
+                >
+                  Remove
+                </button>
               </div>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-between items-center gap-3">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={handleSubmit(onSaveDraft)}
-                className="px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50"
-              >
-                {submitting ? "Saving…" : "Save Draft"}
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate(-1)}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                Cancel
-              </button>
             </div>
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={handleSubmit(onPublish)}
-              className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-            >
-              {submitting ? "Publishing…" : "Publish"}
-            </button>
-          </div>
-        </form>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-between pt-4">
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={handleSubmit(onSaveDraft)}
+            className="bg-gray-700 hover:bg-gray-800 text-white px-5 py-2 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? "Saving..." : "Save Draft"}
+          </button>
+
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={handleSubmit(onPublish)}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? "Publishing..." : "Publish"}
+          </button>
+        </div>
+      </form>
     </section>
   );
 }

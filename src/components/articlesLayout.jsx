@@ -18,7 +18,7 @@ export default function ArticlesLayout() {
 />
 
       {/* SIDEBAR + CONTENT BELOW NAVBAR */}
-      <div className="flex flex-1">
+      <div className="flex flex-1 relative">
         {/* SIDEBAR */}
         {isAdmin && (
           <Sidebar open={sidebarOpen} setOpen={setSidebarOpen} />

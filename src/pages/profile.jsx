@@ -1,134 +1,117 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useState } from "react";
+import UserProfileModal from "../components/profileModel";
+import BackButton from "../components/backButton";
 
-/* ================================
-   API HELPER (LOCAL TO MODAL)
-================================ */
-const backendUrl = import.meta.env.VITE_BACKEND_URL;
+export default function Profile() {
+  const [open, setOpen] = useState(false);
+  const [user, setUser] = useState(
+    JSON.parse(localStorage.getItem("user"))
+  );
 
-const API = axios.create({
-  baseURL: `${backendUrl}/api`,
-  headers: { "Content-Type": "application/json" },
-});
-
-API.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-/* ================================
-   API FUNCTIONS
-================================ */
-const fetchUserById = (id) => API.get(`/users/${id}`);
-const updateUserById = (id, data) => API.put(`/users/${id}`, data);
-
-/* ================================
-   PROFILE MODAL
-================================ */
-export default function ProfileModal({ open, onClose }) {
-  const loggedInUser = JSON.parse(localStorage.getItem("user"));
-  const [form, setForm] = useState({});
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const loadProfile = async () => {
-      try {
-        const res = await fetchUserById(loggedInUser._id);
-        setForm(res.data.data);
-      } catch (err) {
-        alert(err.response?.data?.message || "Failed to load profile");
-      }
-    };
-
-    loadProfile();
-  }, [open, loggedInUser._id]);
-
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const getInitials = () => {
+    const first = user?.firstName?.[0] || "";
+    const last = user?.lastName?.[0] || "";
+    return (first + last).toUpperCase();
   };
 
-  const handleSave = async () => {
-    try {
-      setLoading(true);
-
-      const res = await updateUserById(loggedInUser._id, {
-        firstName: form.firstName,
-        lastName: form.lastName,
-        email: form.email,
-      });
-
-      // keep navbar in sync
-      localStorage.setItem("user", JSON.stringify(res.data.data));
-
-      alert("Profile updated successfully");
-      onClose();
-    } catch (err) {
-      alert(err.response?.data?.message || "Failed to update profile");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (!open) return null;
+  const profileImageUrl = user?.profileImage
+    ? `${import.meta.env.VITE_BACKEND_URL}${user.profileImage}`
+    : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-lg shadow-lg p-6">
-        <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">
-          My Profile
-        </h2>
-
-        <div className="space-y-3">
-          <input
-            name="firstName"
-            value={form.firstName || ""}
-            onChange={handleChange}
-            placeholder="First Name"
-            className="w-full px-3 py-2 rounded border dark:bg-gray-700"
-          />
-
-          <input
-            name="lastName"
-            value={form.lastName || ""}
-            onChange={handleChange}
-            placeholder="Last Name"
-            className="w-full px-3 py-2 rounded border dark:bg-gray-700"
-          />
-
-          <input
-            name="email"
-            value={form.email || ""}
-            onChange={handleChange}
-            placeholder="Email"
-            className="w-full px-3 py-2 rounded border dark:bg-gray-700"
-          />
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <BackButton/>
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        
+        {/* Header */}
+        <div className="mb-6">
+          
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Profile
+          </h1>
         </div>
 
-        <div className="flex justify-end gap-3 mt-6">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded bg-gray-200 dark:bg-gray-600"
-          >
-            Cancel
-          </button>
+        {/* Profile Card */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          {/* Avatar and Basic Info */}
+          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
+            {profileImageUrl ? (
+              <img
+                src={profileImageUrl}
+                alt="Profile"
+                className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 dark:border-gray-700"
+              />
+            ) : (
+              <div className="
+   w-20 h-20 rounded-full
+    flex items-center justify-center
+    border border-gray-300 dark:border-gray-600
+    bg-cyan-600 dark:bg-gray-900
+    text-3xl font-semibold
+    text-white dark:text-gray-100
+    hover:bg-cyan-700 dark:hover:bg-gray-800
+    transition-all
+  ">
+                
+                  {getInitials()}
+                
+              </div>
+            )}
 
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "Saving..." : "Save"}
-          </button>
+            <div className="flex-1">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                {user?.firstName} {user?.lastName}
+              </h2>
+            </div>
+
+            <button
+              onClick={() => setOpen(true)}
+              className="px-3 py-1.5
+  rounded
+  border border-gray-300 dark:border-gray-600
+  bg-cyan-600 dark:bg-gray-900
+  text-sm font-medium
+  text-white dark:text-gray-100
+  hover:bg-cyan-700 dark:hover:bg-gray-800
+  transition-all"
+            >
+              Edit Profile
+            </button>
+          </div>
+
+          {/* Info Grid */}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Email
+              </label>
+              <p className="text-gray-900 dark:text-white">{user?.email}</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Member Since
+              </label>
+              <p className="text-gray-900 dark:text-white">
+                {user?.createdAt
+                  ? new Date(user.createdAt).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })
+                  : "N/A"}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
+
+      <UserProfileModal
+        open={open}
+        onClose={() => setOpen(false)}
+        user={user}
+        setUser={setUser}
+      />
     </div>
   );
 }
