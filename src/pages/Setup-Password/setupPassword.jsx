@@ -6,6 +6,7 @@ import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useNavigate, useParams } from "react-router-dom";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
 
 const schema = yup.object({
   password: yup
@@ -15,7 +16,6 @@ const schema = yup.object({
     .matches(/[A-Z]/, "Must include an uppercase letter")
     .matches(/[a-z]/, "Must include a lowercase letter")
     .matches(/\d/, "Must include a number")
-    // any non-alphanumeric counts as special
     .matches(/[^A-Za-z0-9]/, "Must include a special character"),
   confirmPassword: yup
     .string()
@@ -86,190 +86,185 @@ export default function SetupPassword() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-900 to-zinc-800 flex items-center justify-center p-4">
-      <ToastContainer position="top-center" />
-
-      <div className="w-full max-w-md">
-        <div className="bg-white/90 dark:bg-zinc-900/70 backdrop-blur-xl border border-white/20 dark:border-zinc-700 rounded-2xl shadow-2xl">
-          <div className="px-6 sm:px-8 pt-8">
-            <h1 className="text-3xl font-semibold text-center text-zinc-900 dark:text-zinc-50">
+    <section className="bg-gray-50 dark:bg-gray-900">
+      <ToastContainer position="top-right" autoClose={2000} />
+      <div className="flex flex-col items-center justify-center px-6 py-8 mx-auto md:h-screen lg:py-0">
+        <a
+          href="#"
+          className="flex items-center mb-6 text-2xl font-semibold text-gray-900 dark:text-white"
+        ></a>
+        <div className="w-full bg-white rounded-lg shadow dark:border md:mt-0 sm:max-w-md xl:p-0 dark:bg-gray-800 dark:border-gray-700">
+          <div className="p-6 space-y-4 md:space-y-6 sm:p-8">
+            <h1 className="text-xl font-bold leading-tight tracking-tight text-gray-900 md:text-2xl dark:text-white">
               Set Your Password
             </h1>
-            <p className="text-center text-sm text-zinc-600 dark:text-zinc-300 mt-1">
-              Create a strong password to secure your account.
-            </p>
-          </div>
-
-          <form
-            className="px-6 sm:px-8 pb-8 pt-6 space-y-6"
-            onSubmit={handleSubmit(onSubmit, (err) => {
-              const firstErr = Object.values(err)[0];
-              if (firstErr?.message) toast.error(firstErr.message);
-            })}
-            noValidate
-          >
-            {/* Password */}
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-zinc-800 dark:text-zinc-200"
-              >
-                New Password <span className="text-red-500">*</span>
-              </label>
-              <div className="relative mt-1">
-                <input
-                  id="password"
-                  type={showPwd ? "text" : "password"}
-                  {...register("password")}
-                  className={`w-full rounded-xl bg-white dark:bg-zinc-800 border ${
-                    errors.password
-                      ? "border-red-500"
-                      : "border-zinc-300 dark:border-zinc-700"
-                  } px-4 py-2.5 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                  placeholder="Enter a strong password"
-                  autoComplete="new-password"
-                  aria-invalid={!!errors.password}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPwd((s) => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-blue-600"
-                  aria-label={showPwd ? "Hide password" : "Show password"}
+            <form
+              className="space-y-4 md:space-y-6"
+              onSubmit={handleSubmit(onSubmit, (err) => {
+                const firstErr = Object.values(err)[0];
+                if (firstErr?.message) toast.error(firstErr.message);
+              })}
+              noValidate
+            >
+              {/* Password */}
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
                 >
-                  {showPwd ? "Hide" : "Show"}
-                </button>
-              </div>
-              {errors.password ? (
-                <p className="mt-2 text-sm text-red-600">
-                  {errors.password.message}
-                </p>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  {/* Strength bar */}
-                  <div className="h-1.5 w-full bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-300 ${
-                        strength === 0
-                          ? "w-0"
-                          : strength === 1
-                          ? "w-1/5"
-                          : strength === 2
-                          ? "w-2/5"
-                          : strength === 3
-                          ? "w-3/5"
-                          : strength === 4
-                          ? "w-4/5"
-                          : "w-full"
-                      } ${
-                        strength < 3
-                          ? "bg-red-500"
-                          : strength < 5
-                          ? "bg-amber-500"
-                          : "bg-green-500"
-                      }`}
-                    />
-                  </div>
-                  {/* Checklist */}
-                  <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-300">
-                    {checks.map((c) => (
-                      <li
-                        key={c.label}
-                        className={`flex items-center gap-2 ${
-                          c.ok ? "text-green-600" : ""
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-1.5 w-1.5 rounded-full ${
-                            c.ok ? "bg-green-600" : "bg-zinc-400"
-                          }`}
-                        />
-                        {c.label}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-
-            {/* Confirm Password */}
-            <div>
-              <label
-                htmlFor="confirmPassword"
-                className="block text-sm font-medium text-zinc-800 dark:text-zinc-200"
-              >
-                Confirm Password <span className="text-red-500">*</span>
-              </label>
-              <div className="relative mt-1">
-                <input
-                  id="confirmPassword"
-                  type={showConfirm ? "text" : "password"}
-                  {...register("confirmPassword")}
-                  className={`w-full rounded-xl bg-white dark:bg-zinc-800 border ${
-                    errors.confirmPassword
-                      ? "border-red-500"
-                      : "border-zinc-300 dark:border-zinc-700"
-                  } px-4 py-2.5 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                  placeholder="Re-enter your password"
-                  autoComplete="new-password"
-                  aria-invalid={!!errors.confirmPassword}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm((s) => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-blue-600"
-                  aria-label={
-                    showConfirm
-                      ? "Hide confirm password"
-                      : "Show confirm password"
-                  }
-                >
-                  {showConfirm ? "Hide" : "Show"}
-                </button>
-              </div>
-              <div className="mt-2 text-sm">
-                {errors.confirmPassword ? (
-                  <p className="text-red-600">
-                    {errors.confirmPassword.message}
-                  </p>
-                ) : confirm.length > 0 ? (
-                  <p
-                    className={
-                      confirm === pwd ? "text-green-600" : "text-amber-600"
-                    }
+                  New Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPwd ? "text" : "password"}
+                    {...register("password")}
+                    placeholder="••••••••"
+                    className="bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 pr-10 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPwd((s) => !s)}
+                    aria-label={showPwd ? "Hide password" : "Show password"}
+                    className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white cursor-pointer"
                   >
-                    {confirm === pwd
-                      ? "Passwords match"
-                      : "Passwords do not match"}
+                    {showPwd ? (
+                      <FaEyeSlash size={18} />
+                    ) : (
+                      <FaEye size={18} />
+                    )}
+                  </button>
+                </div>
+                {errors.password ? (
+                  <p className="text-red-500 text-xs italic mt-1">
+                    {errors.password.message}
                   </p>
                 ) : (
-                  <p className="text-zinc-500">
-                    Re-enter the password to confirm.
-                  </p>
+                  <div className="mt-3 space-y-2">
+                    {/* Strength bar */}
+                    <div className="h-1.5 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          strength === 0
+                            ? "w-0"
+                            : strength === 1
+                            ? "w-1/5"
+                            : strength === 2
+                            ? "w-2/5"
+                            : strength === 3
+                            ? "w-3/5"
+                            : strength === 4
+                            ? "w-4/5"
+                            : "w-full"
+                        } ${
+                          strength < 3
+                            ? "bg-red-500"
+                            : strength < 5
+                            ? "bg-amber-500"
+                            : "bg-green-500"
+                        }`}
+                      />
+                    </div>
+                    {/* Checklist */}
+                    <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
+                      {checks.map((c) => (
+                        <li
+                          key={c.label}
+                          className={`flex items-center gap-2 ${
+                            c.ok ? "text-green-600 dark:text-green-400" : ""
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-1.5 w-1.5 rounded-full ${
+                              c.ok ? "bg-green-600" : "bg-gray-400"
+                            }`}
+                          />
+                          {c.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
-            </div>
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={isSubmitting || !isValid}
-              className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 shadow-lg shadow-blue-600/20 transition"
-            >
-              {isSubmitting ? "Setting Password..." : "Set Password"}
-            </button>
-          </form>
+              {/* Confirm Password */}
+              <div>
+                <label
+                  htmlFor="confirmPassword"
+                  className="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
+                >
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="confirmPassword"
+                    type={showConfirm ? "text" : "password"}
+                    {...register("confirmPassword")}
+                    placeholder="••••••••"
+                    className="bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 pr-10 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm((s) => !s)}
+                    aria-label={
+                      showConfirm
+                        ? "Hide confirm password"
+                        : "Show confirm password"
+                    }
+                    className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white cursor-pointer"
+                  >
+                    {showConfirm ? (
+                      <FaEyeSlash size={18} />
+                    ) : (
+                      <FaEye size={18} />
+                    )}
+                  </button>
+                </div>
+                <div className="mt-2 text-sm">
+                  {errors.confirmPassword ? (
+                    <p className="text-red-500 text-xs italic">
+                      {errors.confirmPassword.message}
+                    </p>
+                  ) : confirm.length > 0 ? (
+                    <p
+                      className={
+                        confirm === pwd
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-amber-600 dark:text-amber-400"
+                      }
+                    >
+                      {confirm === pwd
+                        ? "Passwords match"
+                        : "Passwords do not match"}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={isSubmitting || !isValid}
+                className="w-full text-primary-700 bg-white border border-primary-600 hover:bg-primary-50 focus:ring-4 focus:outline-none focus:ring-primary-200 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-gray-100 dark:text-primary-700 dark:hover:bg-gray-200 dark:focus:ring-primary-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSubmitting ? "Setting Password..." : "Set Password"}
+              </button>
+
+              <p className="text-sm font-light text-gray-500 dark:text-gray-400">
+                Remembered your password?{" "}
+                <a
+                  href="/login"
+                  className="font-medium text-primary-600 hover:underline dark:text-primary-500 cursor-pointer"
+                >
+                  Sign in
+                </a>
+              </p>
+            </form>
+          </div>
         </div>
-
-        <p className="text-center text-sm text-zinc-300 mt-4">
-          Remembered your password?{" "}
-          <a
-            href="/login"
-            className="font-medium underline underline-offset-4 hover:no-underline"
-          >
-            Login
-          </a>
-        </p>
       </div>
-    </div>
+    </section>
   );
 }

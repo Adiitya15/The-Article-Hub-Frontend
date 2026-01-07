@@ -1,217 +1,293 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import { Link } from "react-router-dom";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { toast } from "react-toastify";
-import { MdDelete } from "react-icons/md";
 import { FaEdit } from "react-icons/fa";
+import { MdDelete } from "react-icons/md";
 import EditUserStepper from "./editUserStepper";
-import { confirmDelete, showSuccess, showError } from "../../utils/sweetAlert";
+import axiosInstance from "../../utils/axios.interceptor";
+
+const LIMIT = 15;
 
 export default function Users() {
   const [users, setUsers] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null); //edit
-  const [showModal, setShowModal] = useState(false); //edit
 
-  const backendUrl =
-    import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  // Refs for intersection observer
+  const observerRef = useRef(null);
+  const loadMoreRef = useRef(null);
 
-  const fetchUsers = async () => {
+  /* ================= FETCH USERS ================= */
+
+  const fetchUsers = useCallback(async (pageNum) => {
+    if (loading) return;
+
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
 
-      const { data } = await axios.get(`${backendUrl}/api/user/all`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const { data } = await axiosInstance.get(
+        `/user/all?page=${pageNum}&limit=${LIMIT}`
+      );
+
+      const newUsers = data?.data || [];
+
+      setUsers(prev => {
+        // Prevent duplicates
+        const existingIds = new Set(prev.map(u => u._id));
+        const uniqueNewUsers = newUsers.filter(u => !existingIds.has(u._id));
+        return [...prev, ...uniqueNewUsers];
       });
 
-      console.log("check1>>", data);
-
-      setUsers(data?.data || []);
-    } catch (err) {
-      console.error(err);
+      if (newUsers.length < LIMIT) {
+        setHasMore(false);
+      } else {
+        setHasMore(true);
+      }
+    } catch (error) {
       toast.error("Failed to load users");
+      console.error("Fetch error:", error);
     } finally {
       setLoading(false);
     }
+  }, [loading]);
+
+  // Initial load
+  useEffect(() => {
+    fetchUsers(1);
+  }, []);
+
+  /* ================= INTERSECTION OBSERVER ================= */
+
+  useEffect(() => {
+    if (loading || !hasMore) return;
+
+    const options = {
+      root: document.getElementById("users-scroll-container"),
+      rootMargin: "100px",
+      threshold: 0.1,
+    };
+
+    observerRef.current = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !loading && hasMore) {
+        setPage(prev => {
+          const nextPage = prev + 1;
+          fetchUsers(nextPage);
+          return nextPage;
+        });
+      }
+    }, options);
+
+    if (loadMoreRef.current) {
+      observerRef.current.observe(loadMoreRef.current);
+    }
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [loading, hasMore, fetchUsers]);
+
+  /* ================= RESET AFTER CRUD ================= */
+
+  const resetAndReload = () => {
+    setUsers([]);
+    setPage(1);
+    setHasMore(true);
+    fetchUsers(1);
   };
 
-  // 5️ OPEN EDIT (ADD HERE)
-  const openEditModal = (user) => {
-    setSelectedUser(user);
-    setShowModal(true);
-  };
+  /* ================= CREATE ================= */
 
-  // 6️ CLOSE EDIT (ADD HERE)
-  const closeModal = () => {
-    setSelectedUser(null);
-    setShowModal(false);
-  };
-
-  // 7️ UPDATE USER (SAVE)
-  const handleUpdateUser = async (id, updatedData) => {
+  const handleCreateUser = async (_, data) => {
     try {
-      const token = localStorage.getItem("token");
+      await axiosInstance.post(`user/create`, data);
+      toast.success("User created successfully");
+      resetAndReload();
+      return true;
+    } catch {
+      toast.error("Failed to create user");
+      return false;
+    }
+  };
 
-      await axios.put(`${backendUrl}/api/user/${id}`, updatedData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+  /* ================= UPDATE ================= */
 
-      toast.success("User updated");
-      closeModal();
-      fetchUsers();
-    } catch (err) {
+  const handleUpdateUser = async (id, data) => {
+    try {
+      await axiosInstance.put(`user/${id}`, data);
+      toast.success("User updated successfully");
+      resetAndReload();
+      return true;
+    } catch {
       toast.error("Failed to update user");
+      return false;
     }
   };
 
-  // 8️ DELETE USER
-  const handleDelete = async (id) => {
-    const result = await confirmDelete({
-      title: "Delete this user?",
-      text: "This action cannot be undone.",
-    });
+  /* ================= TOGGLE STATUS ================= */
 
-    if (!result.isConfirmed) return;
+  const handleToggleStatus = async (userId) => {
+    try {
+      const { data } = await axiosInstance.patch(`user/status/${userId}`);
+      toast.success(data.message || "User status updated");
+      resetAndReload();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "Failed to update status"
+      );
+    }
+  };
+
+  /* ================= DELETE ================= */
+
+  const handleDeleteUser = async (id) => {
+    if (!window.confirm("Delete this user?")) return;
 
     try {
-      const token = localStorage.getItem("token");
-
-      await axios.delete(`${backendUrl}/api/user/${id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      await showSuccess({
-        title: "Deleted",
-        text: "The user has been removed.",
-      });
-
-      fetchUsers(); // refresh list
-    } catch (err) {
-      console.error(err);
-      await showError({
-        title: "Failed",
-        text: "Could not delete the user. Please try again.",
-      });
+      await axiosInstance.delete(`user/${id}`);
+      toast.success("User deleted");
+      resetAndReload();
+    } catch {
+      toast.error("Failed to delete user");
     }
   };
+
+  /* ================= UI ================= */
 
   return (
     <section>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
-      Users
-    </h1>
-    <p className="text-sm text-gray-500">
-      Manage platform users and permissions
-    </p>
-
-        <Link
-  to="/users/create"
-  className="inline-flex items-center gap-2 px-8 py-2.5 
-             bg-gray-200 dark:bg-gray-700 text-black text-sm font-medium 
-             rounded-lg shadow-sm
-             hover:bg-gray-100 dark:hover:bg-gray-700
-             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-             transition"
->
-  <span className="text-lg leading-none">+</span>
-  Create User
-</Link>
+      {/* HEADER */}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-semibold">Users</h1>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="px-6 py-2 bg-gray-200 rounded hover:bg-gray-300"
+        >
+          + Create User
+        </button>
       </div>
 
-      {/* Content */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="p-4 text-gray-500">Loading users...</div>
-        ) : users.length === 0 ? (
-          <div className="p-4 text-gray-500">No users found.</div>
-        ) : (
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide w-[22%]">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide w-[38%]">
-                  Email
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide w-[20%]">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide w-[20%]">
-                  Actions
-                </th>
+      {/* TABLE CONTAINER (SCROLLABLE) */}
+      <div
+        id="users-scroll-container"
+        className="bg-white rounded-lg shadow overflow-y-auto"
+        style={{ maxHeight: "500px" }}
+      >
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-100 sticky top-0 z-10">
+            <tr>
+              <th className="px-6 py-3 text-left">Name</th>
+              <th className="px-6 py-3 text-left">Email</th>
+              <th className="px-6 py-3 text-left">Role</th>
+              <th className="px-6 py-3 text-left">Status</th>
+              <th className="px-6 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {users.map((user) => (
+              <tr key={user._id} className="border-t hover:bg-gray-50">
+                <td className="px-6 py-4">
+                  {user.firstName} {user.lastName}
+                </td>
+                <td className="px-6 py-4">{user.email}</td>
+
+                <td className="px-6 py-4">
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-medium ${
+                      user.role === "admin"
+                        ? "bg-purple-100 text-purple-800"
+                        : "bg-gray-100 text-gray-800"
+                    }`}
+                  >
+                    {user.role}
+                  </span>
+                </td>
+
+                <td className="px-6 py-4">
+                  <label className="inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={user.status === "active"}
+                      onChange={() => handleToggleStatus(user._id)}
+                      className="sr-only peer"
+                    />
+                    <div className="relative w-11 h-6 bg-gray-300 rounded-full peer peer-checked:bg-green-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full" />
+                    <span className="ml-3 text-sm">
+                      {user.status === "active" ? "Active" : "Inactive"}
+                    </span>
+                  </label>
+                </td>
+
+                <td className="px-6 py-4 text-right">
+                  <button
+                    onClick={() => {
+                      setSelectedUser(user);
+                      setShowEditModal(true);
+                    }}
+                    className="mr-3 text-blue-600 hover:text-blue-800"
+                  >
+                    <FaEdit />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteUser(user._id)}
+                    className="text-red-600 hover:text-red-800"
+                  >
+                    <MdDelete />
+                  </button>
+                </td>
               </tr>
-            </thead>
+            ))}
+          </tbody>
+        </table>
 
-            <tbody>
-              {users.map((user) => (
-                <tr key={user._id} className="border-t dark:border-gray-700">
-                  {/* Name */}
-                  <td className="px-6 py-4">
-  <div className="font-medium text-gray-900 dark:text-white">
-    {user.firstName} {user.lastName}
-  </div>
-</td>
+        {/* INTERSECTION OBSERVER TARGET */}
+        {hasMore && (
+          <div
+            ref={loadMoreRef}
+            className="h-20 flex items-center justify-center"
+          >
+            {loading && (
+              <div className="text-gray-500">Loading more users...</div>
+            )}
+          </div>
+        )}
 
-                  {/* Email */}
-                  <td className="px-6 py-4 text-gray-600 dark:text-gray-300 break-all">
-  {user.email}
-</td>
-                  {/* Role */}
-                  <td className="px-6 py-4">
-  <span
-    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-      user.role === "admin"
-        ? "bg-purple-100 text-purple-700"
-        : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-    }`}
-  >
-    {user.role}
-  </span>
-</td>
+        {/* END INDICATOR */}
+        {!hasMore && users.length > 0 && (
+          <div className="p-4 text-center text-gray-400">
+            No more users
+          </div>
+        )}
 
-                 <td className="px-6 py-4">
-  <div className="flex justify-end items-center gap-2">
-    <button
-      onClick={() => openEditModal(user)}
-      className="p-2 rounded-md text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition"
-      title="Edit user"
-    >
-      <FaEdit className="w-4 h-4" />
-    </button>
-
-    <button
-      onClick={() => handleDelete(user._id)}
-      className="p-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition"
-      title="Delete user"
-    >
-      <MdDelete className="w-4 h-4" />
-    </button>
-  </div>
-</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* EMPTY STATE */}
+        {!loading && users.length === 0 && (
+          <div className="p-8 text-center text-gray-400">
+            No users found
+          </div>
         )}
       </div>
-      {showModal && selectedUser && (
+
+      {/* CREATE MODAL */}
+      {showCreateModal && (
         <EditUserStepper
+          mode="create"
+          onClose={() => setShowCreateModal(false)}
+          onSave={handleCreateUser}
+        />
+      )}
+
+      {/* EDIT MODAL */}
+      {showEditModal && selectedUser && (
+        <EditUserStepper
+          mode="edit"
           user={selectedUser}
-          onClose={closeModal}
+          onClose={() => setShowEditModal(false)}
           onSave={handleUpdateUser}
         />
       )}
