@@ -191,8 +191,8 @@ export default function ArticleCard({
           <span>
             By{" "}
             <span className="font-medium text-gray-700 dark:text-gray-300">
-              {article.authorId?.firstName || article.authorName || "Unknown"}{" "}
-              {article.authorId?.lastName || article.authorName || "Unknown"}
+              {article.author?.firstName || article.authorName || "Unknown"}{" "}
+              {article.author?.lastName || article.authorName || "Unknown"}
             </span>{" "}
             •{" "}
             {new Date(article.createdAt).toLocaleDateString(undefined, {

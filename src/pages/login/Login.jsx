@@ -67,9 +67,16 @@ const Login = () => {
         }, 500);
       }
     } catch (error) {
-      toast.error("Email or password is incorrect. Please try again.");
-      console.error("Login error:", error);
-    }
+  const backendMessage = error.response?.data?.message || "";
+  
+  if (backendMessage === "Your account is inactive. Please contact support.") {
+    toast.error("User is inactive to login. Please contact support.");
+  } else {
+    toast.error(backendMessage || "Email or password is incorrect. Please try again.");
+  }
+  
+  console.error("Login error:", error);
+}
   };
 
   return (
@@ -133,7 +140,7 @@ const Login = () => {
                     aria-label={
                       showPassword ? "Hide password" : "Show password"
                     }
-                    className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white"
+                    className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white cursor-pointer"
                   >
                     {showPassword ? (
                       <FaEyeSlash size={18} />
@@ -152,7 +159,7 @@ const Login = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full text-primary-700 bg-white border border-primary-600 hover:bg-primary-50 focus:ring-4 focus:outline-none focus:ring-primary-200 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-gray-100 dark:text-primary-700 dark:hover:bg-gray-200 dark:focus:ring-primary-300"
+                className="w-full text-primary-700 bg-white border border-primary-600 hover:bg-primary-50 focus:ring-4 focus:outline-none focus:ring-primary-200 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-gray-100 dark:text-primary-700 dark:hover:bg-gray-200 dark:focus:ring-primary-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Sign in
               </button>
@@ -161,7 +168,7 @@ const Login = () => {
                 Don't have an account yet?{" "}
                 <a
                   href="/signup"
-                  className="font-medium text-primary-600 hover:underline dark:text-primary-500"
+                  className="font-medium text-primary-600 hover:underline dark:text-primary-500 cursor-pointer"
                 >
                   Sign up
                 </a>

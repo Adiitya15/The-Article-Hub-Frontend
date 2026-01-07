@@ -1,5 +1,4 @@
-// src/pages/articles/Articles.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import axiosInstance from "../../utils/axios.interceptor";
@@ -23,31 +22,76 @@ function useDebounce(value, delay = 400) {
   return v;
 }
 
+const LIMIT = 9; // Changed from 1 to 9 for 3x3 grid
+
 const Articles = ({ status }) => {
   const [articles, setArticles] = useState([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 400);
   const [loading, setLoading] = useState(false);
-  const [limit, setLimit] = useState(2);
   const [publishingId, setPublishingId] = useState(null);
 
   const user = JSON.parse(localStorage.getItem("user"));
+  
+  // Refs for intersection observer
+  const observerRef = useRef(null);
+  const loadMoreRef = useRef(null);
   const controllerRef = useRef(null);
 
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  /* ================= FETCH ARTICLES ================= */
 
-  const fetchArticles = async (signal) => {
+  const fetchArticles = useCallback(async (pageNum) => {
+    if (loading) return;
+
     try {
       setLoading(true);
+
+      if (controllerRef.current) controllerRef.current.abort();
+      const controller = new AbortController();
+      controllerRef.current = controller;
+
+      console.log('🔍 Fetching articles:', { pageNum, limit: LIMIT, search: debouncedSearch, status });
+
       const { data } = await axiosInstance.get("/article/allArticles", {
-        params: { page, limit, search: debouncedSearch, status },
-        signal,
+        params: { page: pageNum, limit: LIMIT, search: debouncedSearch, status },
+        signal: controller.signal,
       });
-      console.log("array shape<<<", data);
-      setArticles(data?.data?.[0]?.items ?? []);
-      setTotal(data?.data?.[0]?.total ?? 0);
+      console.log('------->>', data)
+      const newArticles = data?.data?.[0].items ?? [];
+      const total = data?.data?.[0]?.total ?? 0;
+
+      console.log('📦 Received:', { 
+        pageNum, 
+        newArticlesCount: newArticles.length, 
+        total,
+        totalPages: Math.ceil(total / LIMIT)
+      });
+
+      setArticles(prev => {
+        // Prevent duplicates
+        const existingIds = new Set(prev.map(a => a._id));
+        const uniqueNewArticles = newArticles.filter(a => !existingIds.has(a._id));
+        console.log('✅ Adding articles:', { 
+          prevCount: prev.length, 
+          newCount: uniqueNewArticles.length,
+          totalAfter: prev.length + uniqueNewArticles.length 
+        });
+        return [...prev, ...uniqueNewArticles];
+      });
+
+      // Check if there are more pages
+      if (newArticles.length < LIMIT) {
+        console.log('🛑 No more articles (received less than limit)');
+        setHasMore(false);
+      } else {
+        const totalPages = Math.ceil(total / LIMIT);
+        const hasMorePages = pageNum < totalPages;
+        console.log('📄 Has more?', { pageNum, totalPages, hasMore: hasMorePages });
+        setHasMore(hasMorePages);
+      }
+
     } catch (err) {
       if (axios.isCancel(err) || err.name === "CanceledError") return;
       console.error(err);
@@ -55,15 +99,51 @@ const Articles = ({ status }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedSearch, status]); // Removed 'loading' from dependencies
+
+  /* ================= INITIAL LOAD ================= */
+
+  // Initial load - runs when search or status changes
+  useEffect(() => {
+    setArticles([]);
+    setPage(1);
+    setHasMore(true);
+    fetchArticles(1);
+  }, [debouncedSearch, status]); // Removed fetchArticles from dependencies
+
+  /* ================= INTERSECTION OBSERVER ================= */
 
   useEffect(() => {
-    if (controllerRef.current) controllerRef.current.abort();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    fetchArticles(controller.signal);
-    return () => controller.abort();
-  }, [page, debouncedSearch, status, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (loading || !hasMore) return;
+
+    const options = {
+      root: null, // viewport
+      rootMargin: "200px",
+      threshold: 0.1,
+    };
+
+    observerRef.current = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !loading && hasMore) {
+        setPage(prev => {
+          const nextPage = prev + 1;
+          fetchArticles(nextPage);
+          return nextPage;
+        });
+      }
+    }, options);
+
+    if (loadMoreRef.current) {
+      observerRef.current.observe(loadMoreRef.current);
+    }
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [loading, hasMore, fetchArticles]);
+
+  /* ================= HANDLERS ================= */
 
   const canCreate = user?.role === "user" || user?.role === "admin";
 
@@ -106,11 +186,6 @@ const Articles = ({ status }) => {
       });
 
       setArticles((prev) => prev.filter((a) => a._id !== id));
-      setTotal((prev) => Math.max(0, prev - 1));
-
-      if (articles.length === 1 && page > 1) {
-        setPage((p) => p - 1);
-      }
     } catch (err) {
       console.error(err);
       await showError({
@@ -128,8 +203,7 @@ const Articles = ({ status }) => {
     <section className="bg-gray-50 dark:bg-gray-900 min-h-screen">
       <ToastContainer position="top-right" autoClose={2000} />
       
-      {/* Main content - with left margin for sidebar that's in parent layout */}
-      <div className=" w-full">
+      <div className="w-full">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
@@ -142,9 +216,9 @@ const Articles = ({ status }) => {
                 <Link
                   to="/articles/new"
                   className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md
-                             text-white bg-gray-700 hover:bg-gray-600 
-                             dark:bg-gray-600 dark:hover:bg-gray-500 
-                             transition-all duration-200 shadow-sm"
+                            text-white bg-gray-700 hover:bg-gray-600 
+                            dark:bg-gray-600 dark:hover:bg-gray-500 
+                            transition-all duration-200 shadow-sm"
                 >
                   + New Article
                 </Link>
@@ -158,27 +232,13 @@ const Articles = ({ status }) => {
               type="text"
               placeholder={`Search ${title.toLowerCase()} by title or content...`}
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setSearch(e.target.value)}
               className="w-full max-w-2xl bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-blue-500 focus:border-blue-500 px-4 py-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
             />
           </div>
 
           {/* Articles Grid */}
-          {loading ? (
-            <ul
-              className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6"
-              role="status"
-              aria-live="polite"
-              aria-busy="true"
-            >
-              {Array.from({ length: limit }).map((_, i) => (
-                <ArticleCardSkeleton key={i} />
-              ))}
-            </ul>
-          ) : articles.length === 0 ? (
+          {articles.length === 0 && !loading ? (
             <div className="text-center text-gray-500 dark:text-gray-400 mt-10 py-12">
               <p className="text-lg">No {status === "draft" ? "drafts" : "articles"} found.</p>
             </div>
@@ -198,95 +258,42 @@ const Articles = ({ status }) => {
             </ul>
           )}
 
-          {/* Pagination */}
-          {!loading && total > 0 && totalPages >= 1 && (
-            <div className="mt-8 space-y-4">
-              {/* Page Controls */}
-              <div className="flex items-center justify-center gap-2">
-                {/* Prev */}
-                <button
-                  disabled={page === 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className={`px-4 py-2 border rounded-lg shadow-sm transition font-medium
-                    ${page === 1 
-                      ? "opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800" 
-                      : "hover:bg-gray-100 dark:hover:bg-gray-700"}
-                    bg-white dark:bg-gray-800 dark:border-gray-700
-                    text-gray-700 dark:text-gray-200`}
-                >
-                  Previous
-                </button>
+          {/* Loading Skeleton */}
+          {loading && articles.length === 0 && (
+            <ul
+              className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              {Array.from({ length: LIMIT }).map((_, i) => (
+                <ArticleCardSkeleton key={i} />
+              ))}
+            </ul>
+          )}
 
-                {/* Page Numbers */}
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }).map((_, index) => {
-                    const pageNum = index + 1;
-                    const isActive = page === pageNum;
-
-                    // Show first, last, current, and adjacent pages
-                    const showPage = 
-                      pageNum === 1 || 
-                      pageNum === totalPages || 
-                      Math.abs(pageNum - page) <= 1;
-
-                    const showEllipsis = 
-                      (pageNum === 2 && page > 3) ||
-                      (pageNum === totalPages - 1 && page < totalPages - 2);
-
-                    if (!showPage && !showEllipsis) return null;
-                    if (showEllipsis) return <span key={pageNum} className="px-2 text-gray-500">...</span>;
-
-                    return (
-                      <button
-                        key={pageNum}
-                        disabled={isActive}
-                        onClick={() => setPage(pageNum)}
-                        className={`min-w-[2.5rem] px-3 py-2 rounded-md text-sm font-medium transition
-                          ${isActive
-                            ? "bg-gray-700 text-white cursor-default shadow-md"
-                            : "hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200"}
-                          disabled:opacity-70`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
+          {/* INTERSECTION OBSERVER TARGET */}
+          {hasMore && articles.length > 0 && (
+            <div
+              ref={loadMoreRef}
+              className="mt-8 py-12 flex items-center justify-center"
+            >
+              {loading && (
+                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Loading more articles...</span>
                 </div>
+              )}
+            </div>
+          )}
 
-                {/* Next */}
-                <button
-                  disabled={page === totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className={`px-4 py-2 border rounded-lg shadow-sm transition font-medium
-                    ${page === totalPages
-                      ? "opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800"
-                      : "hover:bg-gray-100 dark:hover:bg-gray-700"}
-                    bg-white dark:bg-gray-800 dark:border-gray-700
-                    text-gray-700 dark:text-gray-200`}
-                >
-                  Next
-                </button>
-              </div>
-
-              {/* Items per page */}
-              <div className="flex items-center justify-center gap-3">
-                <label className="text-sm text-gray-600 dark:text-gray-300 font-medium">
-                  Items per page:
-                </label>
-                <select
-                  value={limit}
-                  onChange={(e) => {
-                    setLimit(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                </select>
-              </div>
+          {/* END INDICATOR */}
+          {!hasMore && articles.length > 0 && (
+            <div className="mt-8 py-8 text-center text-gray-400 dark:text-gray-500">
+              <p>You've reached the end</p>
             </div>
           )}
         </div>

@@ -127,7 +127,7 @@ export default function UserProfileModal({ open, onClose, user, setUser }) {
         {/* Content */}
         <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
           {/* Profile Image */}
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center ">
             <div className="relative">
               {preview ? (
                 <img
@@ -136,14 +136,21 @@ export default function UserProfileModal({ open, onClose, user, setUser }) {
                   className="w-20 h-20 rounded-full object-cover border-2 border-gray-300 dark:border-gray-600"
                 />
               ) : (
-                <div className="w-20 h-20 rounded-full bg-blue-500 flex items-center justify-center border-2 border-gray-300 dark:border-gray-600">
+                <div className=" w-20 h-20 rounded-full
+    flex items-center justify-center
+    border border-gray-300 dark:border-gray-600
+    bg-cyan-600 dark:bg-gray-900
+    text-3xl font-semibold
+    text-white dark:text-gray-100
+    hover:bg-cyan-700 dark:hover:bg-gray-800
+    transition-all">
                   <span className="text-2xl font-semibold text-white">
                     {getInitials()}
                   </span>
                 </div>
               )}
             </div>
-            <label className="mt-2 text-sm text-blue-600 hover:text-blue-700 cursor-pointer font-medium">
+            <label className="mt-2 text-sm text-black-600 hover:text-cyan-700 cursor-pointer font-medium">
               Change Photo
               <input
                 type="file"
